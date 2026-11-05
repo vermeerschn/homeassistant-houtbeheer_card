@@ -33,6 +33,7 @@ tegelinhoud: [houtsoorten, vocht, status, actief]
 | `read_only` | `false` | Toont alleen het overzicht en de opgeslagen gegevens; geen invoer, geen knoppen. |
 | `weergave` | `uitgebreid` | `compact` toont per tegel alleen naam en vochtpercentage (handig voor een muurtablet). |
 | `kolommen` | `auto` | Aantal tegels per rij (1 t/m 8). `auto` past zich aan de breedte aan. |
+| `verloop` | `true` | Toont onder het gekozen hok een grafiek en lijst met de laatste 5 metingen. Vereist integratie 1.6.0. Met `false` verborgen. |
 | `tegelinhoud` | zie uitleg | Lijst met wat op de tegel staat: `houtsoorten`, `vocht`, `status`, `laatste_meting`, `vuldatum`, `actief`. Standaard `[houtsoorten, vocht, status, actief]`, bij `compact` `[vocht, actief]`. |
 | `hokken` | automatisch | Handmatige koppeling van entiteiten, zie hieronder. |
 | `aantal_hokken` | – | Terugval voor oudere installaties zonder de attributen van de integratie. |
@@ -63,6 +64,7 @@ Zonder `actief` en `reset` ontbreken de knoppen *Dit hok actief maken* en *Reset
 
 ## Gedrag
 
+- **Verloop**: de grafiek zet de laatste 5 metingen op een echte tijdas, zodat je ook bij metingen die maanden uit elkaar liggen ziet of het hout vlot droogt. Een reset van het hok wist de geschiedenis.
 - **Houtsoorten**: de knop *Houtsoorten* klapt een lijst met vinkjes open. Elk vinkje wordt meteen opgeslagen via de actie `houtbeheer.set_wood_types`. De tegel toont de gekozen soorten (bij meer dan twee: de eerste twee en `+N`).
 - **Meting opslaan**: de kaart zet de ingevulde waarde in het invoerveld en drukt daarna op de knop *Meting opslaan*, zodat waarde en tijdstip samen worden vastgelegd. Een waarde buiten het bereik van het invoerveld wordt geweigerd.
 - **Stookklaar**: de kaart volgt de binary sensor van de integratie, dus de drempel staat op één plek.

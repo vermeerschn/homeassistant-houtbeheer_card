@@ -4,6 +4,7 @@ Installatie: kopieer naar /config/www/houtbeheer-card.js en voeg resource
 Kaart YAML: type: custom:houtbeheer-card
 Optioneel: title: Houtbeheer
 Optioneel: aantal_hokken: 12
+Optioneel: verloop: true (grafiek van de laatste metingen van het gekozen hok)
 Optioneel: kolommen: auto (of 1 t/m 8), weergave: uitgebreid | compact,
            tegelinhoud: [houtsoorten, vocht, status, laatste_meting, vuldatum, actief]
 Optioneel expliciete koppeling (als entiteiten hernoemd zijn):
@@ -140,6 +141,35 @@ class HoutbeheerCard extends HTMLElement {
     const days = Math.floor((Date.now() - new Date(value + 'T00:00:00').getTime()) / 864e5);
     return days >= 0 ? `Gevuld ${short} · ${days} d` : `Gevuld ${short}`;
   }
+  num(value) { return String(value).replace('.', ','); }
+  history(shed) {
+    const list = this.state(shed.vocht)?.attributes?.metingen;
+    if (!Array.isArray(list)) return [];
+    return list.map(item => ({time: new Date(item.datum).getTime(), value: Number(item.vocht)}))
+      .filter(item => !isNaN(item.time) && Number.isFinite(item.value)).sort((a, b) => a.time - b.time);
+  }
+  historyHtml(shed) {
+    const points = this.history(shed);
+    if (!points.length) return '';
+    const e = v => this.escape(v), short = t => new Date(t).toLocaleDateString('nl-BE', {day: '2-digit', month: '2-digit', year: '2-digit'});
+    const W = 300, H = 90, L = 34, R = 10, T = 10, B = 14;
+    const min = Math.min(...points.map(p => p.value)), max = Math.max(...points.map(p => p.value));
+    const lo = Math.floor(min - 1), hi = Math.ceil(max + 1);
+    const t0 = points[0].time, t1 = points[points.length - 1].time;
+    const x = p => t1 === t0 ? (L + W - R) / 2 : L + (p.time - t0) / (t1 - t0) * (W - L - R);
+    const y = p => T + (hi - p.value) / (hi - lo) * (H - T - B);
+    const line = points.length > 1 ? `<polyline points="${points.map(p => `${x(p).toFixed(1)},${y(p).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--primary-color)" stroke-width="2"/>` : '';
+    const dots = points.map(p => `<circle cx="${x(p).toFixed(1)}" cy="${y(p).toFixed(1)}" r="3.5" fill="var(--primary-color)"><title>${e(short(p.time))}: ${e(this.num(p.value))}%</title></circle>`).join('');
+    const axis = `<text x="2" y="${T + 4}" class="axis">${hi}%</text><text x="2" y="${H - B}" class="axis">${lo}%</text><line x1="${L}" y1="${T}" x2="${L}" y2="${H - B}" stroke="var(--divider-color)"/><line x1="${L}" y1="${H - B}" x2="${W - R}" y2="${H - B}" stroke="var(--divider-color)"/>`;
+    let trend = '';
+    if (points.length > 1) {
+      const diff = Math.round((points[points.length - 1].value - points[0].value) * 10) / 10;
+      trend = `<div class="trend">${diff === 0 ? 'Onveranderd' : `${diff < 0 ? '−' : '+'}${this.num(Math.abs(diff))} punten`} sinds ${e(short(t0))}</div>`;
+    }
+    const rows = [...points].reverse().map(p => `<li><span>${e(short(p.time))}</span><strong>${e(this.num(p.value))}%</strong></li>`).join('');
+    return `<div class="history"><div class="history-title">Verloop · laatste ${points.length} ${points.length === 1 ? 'meting' : 'metingen'}</div>
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Verloop van het vochtpercentage" preserveAspectRatio="xMidYMid meet">${axis}${line}${dots}</svg>${trend}<ul>${rows}</ul></div>`;
+  }
   woodLabel(types) {
     if (!types.length) return 'Geen houtsoort';
     return types.length <= 2 ? types.join(', ') : `${types.slice(0, 2).join(', ')} +${types.length - 2}`;
@@ -174,7 +204,7 @@ class HoutbeheerCard extends HTMLElement {
       <style>
         :host{display:block}ha-card{overflow:hidden;padding:20px;color:var(--primary-text-color);background:var(--ha-card-background,var(--card-background-color));border-radius:var(--ha-card-border-radius,16px)}
         h2{font-size:22px;margin:0 0 5px}p{color:var(--secondary-text-color);margin:0 0 18px;font-size:14px}
-        .grid{display:grid;grid-template-columns:var(--cols);gap:8px;margin-bottom:22px}.compact .hok{padding:10px 4px;gap:2px}.compact .hok strong{font-size:14px}.compact .hok small{font-size:18px;font-weight:700;color:var(--primary-text-color)}.compact .hok.ready small{color:var(--success-color,#368647)}.tile-date{font-size:11px;color:var(--secondary-text-color)}
+        .grid{display:grid;grid-template-columns:var(--cols);gap:8px;margin-bottom:22px}.compact .hok{padding:10px 4px;gap:2px}.compact .hok strong{font-size:14px}.compact .hok small{font-size:18px;font-weight:700;color:var(--primary-text-color)}.compact .hok.ready small{color:var(--success-color,#368647)}.history{margin:4px 0 16px}.history-title{font-size:14px;font-weight:600;margin-bottom:6px}.history svg{width:100%;height:auto;max-height:140px;display:block}.axis{font-size:9px;fill:var(--secondary-text-color)}.trend{font-size:13px;color:var(--secondary-text-color);margin:4px 0}.history ul{list-style:none;margin:6px 0 0;padding:0;font-size:14px;color:var(--secondary-text-color)}.history li{display:flex;justify-content:space-between;padding:2px 0}.history li strong{color:var(--primary-text-color)}.tile-date{font-size:11px;color:var(--secondary-text-color)}
         button,select,input{font:inherit;box-sizing:border-box}button{cursor:pointer;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:transparent;color:inherit}
         .hok{display:flex;flex-direction:column;gap:5px}.hok small{font-size:12px;color:var(--secondary-text-color)}.hok.active{border:2px solid var(--primary-color);background:var(--secondary-background-color)}
         .hok{padding:12px 5px;align-items:center;min-width:0}.wood-type{font-size:13px;overflow-wrap:anywhere}.hok.ready{background:rgba(54,134,71,.14);border-color:var(--success-color,#368647)}.hok.ready.active{border-color:var(--primary-color);box-shadow:inset 0 0 0 1px var(--primary-color)}.ready small{color:var(--success-color,#368647)}.status{display:block;border-radius:7px;padding:5px 4px;font-size:11px;font-weight:700;line-height:1.4;width:100%;box-sizing:border-box}.status-ready{background:var(--success-color,#368647);color:white}.status-wet{background:rgba(230,153,0,.15);color:var(--primary-text-color)}.status-unknown{background:var(--secondary-background-color);color:var(--secondary-text-color)}label{display:block;font-size:14px;margin-bottom:7px}select,input{width:100%;padding:12px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:inherit;min-height:46px}
@@ -201,6 +231,7 @@ class HoutbeheerCard extends HTMLElement {
       ${woodPanel}
       <div class="fields"><div><label for="filled-date">Hok gevuld op</label><input id="filled-date" type="date" value="${e(this.valid(this.state(shed.vuldatum)?.state)?this.state(shed.vuldatum).state:'')}" ${this.state(shed.vuldatum)&&this.state(shed.vuldatum).state!=='unavailable'?'':'disabled'}></div></div>
       <div class="info">Gevuld op: ${e(this.valid(this.state(shed.vuldatum)?.state)?this.state(shed.vuldatum).state.split('-').reverse().join('/'):'Nog niet ingesteld')}<br>Opgeslagen: <strong>${this.valid(this.state(shed.vocht)?.state)?e(this.state(shed.vocht).state)+'%':'Nog geen meting'}</strong><br>Laatste meting: ${e(this.date(shed.datum))}</div>
+      ${this.config.verloop===false?'':this.historyHtml(shed)}
       <button class="save" id="save" ${this.state(shed.opslaan)&&this.state(shed.invoer)?'':'disabled'}>Meting opslaan · Hok ${e(shed.nummer)}</button>
       <div class="message ${this.error?'error':''}" role="status">${e(this.message)}</div>`}</ha-card>`;
     if(this.config.read_only) {
@@ -322,11 +353,13 @@ class HoutbeheerCardEditor extends HTMLElement {
     </style><label for="title">Titel</label><input id="title" type="text"><label class="toggle"><input id="readonly" type="checkbox">Alleen-lezenkaart</label><p>Verberg de houtsoortkeuze, het invoerveld voor nieuwe vochtmetingen en de knop Meting opslaan. Het hokoverzicht en opgeslagen meetgegevens blijven zichtbaar.</p>
     <h4>Tegels</h4><label for="view">Weergave</label><select id="view"><option value="uitgebreid">Uitgebreid</option><option value="compact">Compact (nummer en percentage)</option></select>
     <label for="cols">Tegels per rij</label><select id="cols"><option value="auto">Automatisch</option>${[1,2,3,4,5,6,7,8].map(n=>`<option value="${n}">${n}</option>`).join('')}</select>
-    <label>Inhoud van de tegel</label>${contents.map(([key,text])=>`<label class="toggle"><input type="checkbox" data-item="${key}">${text}</label>`).join('')}`;
+    <label class="toggle"><input id="verloop" type="checkbox">Toon verloop van de laatste metingen</label><label>Inhoud van de tegel</label>${contents.map(([key,text])=>`<label class="toggle"><input type="checkbox" data-item="${key}">${text}</label>`).join('')}`;
     const title=this.shadowRoot.querySelector('#title');title.value=this.config.title??'Houtbeheer';
     title.addEventListener('input',()=>this.update('title',title.value));
     const readonly=this.shadowRoot.querySelector('#readonly');readonly.checked=Boolean(this.config.read_only);
     readonly.addEventListener('change',()=>this.update('read_only',readonly.checked));
+    const verloop=this.shadowRoot.querySelector('#verloop');verloop.checked=this.config.verloop!==false;
+    verloop.addEventListener('change',()=>{const c={...this.config};if(verloop.checked)delete c.verloop;else c.verloop=false;this.commit(c);});
     const view=this.shadowRoot.querySelector('#view');view.value=compact?'compact':'uitgebreid';
     view.addEventListener('change',()=>{const c={...this.config};if(view.value==='compact')c.weergave='compact';else delete c.weergave;this.commit(c);this.render();});
     const cols=this.shadowRoot.querySelector('#cols');cols.value=String(this.config.kolommen??'auto');
