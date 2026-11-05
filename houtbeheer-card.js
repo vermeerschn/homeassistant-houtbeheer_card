@@ -84,7 +84,7 @@ class HoutbeheerCard extends HTMLElement {
       for(let n=1;n<=this.config.aantal_hokken;n++) numbers.add(n);
     }
     return [...numbers].sort((a,b)=>a-b).map(n=>({nummer:n,
-      houtsoort:this.find(n,'select','Houtsoort'),
+      houtsoort:this.find(n,'sensor','Houtsoorten')||this.find(n,'select','Houtsoort'),
       invoer:this.find(n,'number','Nieuwe vochtmeting'),
       opslaan:this.find(n,'button','Meting opslaan'),
       vocht:this.find(n,'sensor','Opgeslagen vochtgehalte'),
@@ -171,7 +171,7 @@ class HoutbeheerCard extends HTMLElement {
         const allowed=this.state(s.actief)?.state==='on';
         return `<button class="hok ${s.nummer===this.selected?'active':''} ${ready?'ready':''} ${allowed?'take-wood':''}" data-hok="${e(s.nummer)}"><strong>${e(s.naam || `Hok ${s.nummer}`)}</strong><span class="wood-type" title="${e(woodTypes.join(', '))}">${e(this.woodLabel(woodTypes))}</span><small>${valid?e(moisture)+'%':'Geen meting'}</small><span class="status ${ready?'status-ready':valid?'status-wet':'status-unknown'}">${ready?'🔥 Stookklaar':valid?'💧 Nog drogen':'— Niet gemeten'}</span>${allowed?'<span class="take-badge">🪵 Neem hier hout</span>':''}</button>`;
       }).join('')}</div>
-      <div class="fields"><div><label for="wood-toggle">Houtsoorten · Hok ${e(shed.nummer)}</label><button type="button" id="wood-toggle" class="select-like" aria-expanded="${woodPanel?'true':'false'}" aria-controls="wood-panel" title="${e(woodChosen.join(', '))}" ${woodOptions.length?'':'disabled'}><span>${e(this.woodLabel(woodChosen))}</span><span aria-hidden="true">${woodPanel?'▴':'▾'}</span></button></div>
+      <div class="fields"><div><label for="wood-toggle">Houtsoorten · Hok ${e(shed.nummer)}</label><button type="button" id="wood-toggle" class="select-like" aria-expanded="${woodPanel?'true':'false'}" aria-controls="wood-panel" title="${woodOptions.length?e(woodChosen.join(', ')):'Geen houtsoorten gevonden: werk de integratie bij naar 1.5.0'}" ${woodOptions.length?'':'disabled'}><span>${e(this.woodLabel(woodChosen))}</span><span aria-hidden="true">${woodPanel?'▴':'▾'}</span></button></div>
       <div><label for="moisture">Nieuwe vochtmeting (%)</label><input id="moisture" type="text" inputmode="decimal" placeholder="Bijvoorbeeld 18,5" value="${e(draft)}" ${this.state(shed.invoer)?'':'disabled'}></div></div>
       ${woodPanel}
       <div class="fields"><div><label for="filled-date">Hok gevuld op</label><input id="filled-date" type="date" value="${e(this.valid(this.state(shed.vuldatum)?.state)?this.state(shed.vuldatum).state:'')}" ${this.state(shed.vuldatum)&&this.state(shed.vuldatum).state!=='unavailable'?'':'disabled'}></div></div>
