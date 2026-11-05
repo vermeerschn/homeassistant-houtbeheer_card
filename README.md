@@ -60,12 +60,12 @@ hokken:
     stookklaar: binary_sensor.houthok_1_stookklaar
 ```
 
-Zonder `actief` en `reset` ontbreken de knoppen *Dit hok actief maken* en *Reset hok*. Zonder `stookklaar` rekent de kaart zelf met een vaste grens van 20% vocht.
+Zonder `actief` en `reset` ontbreken de knoppen *Dit hok actief maken* en *Reset hok*. Zonder `stookklaar` rekent de kaart zelf met een grens van 20% vocht.
 
 ## Gedrag
 
 - **Verloop**: de grafiek zet de laatste 5 metingen op een echte tijdas, zodat je ook bij metingen die maanden uit elkaar liggen ziet of het hout vlot droogt. Een reset van het hok wist de geschiedenis.
 - **Houtsoorten**: de knop *Houtsoorten* klapt een lijst met vinkjes open. Elk vinkje wordt meteen opgeslagen via de actie `houtbeheer.set_wood_types`. De tegel toont de gekozen soorten (bij meer dan twee: de eerste twee en `+N`).
 - **Meting opslaan**: de kaart zet de ingevulde waarde in het invoerveld en drukt daarna op de knop *Meting opslaan*, zodat waarde en tijdstip samen worden vastgelegd. Een waarde buiten het bereik van het invoerveld wordt geweigerd.
-- **Stookklaar**: de kaart volgt de binary sensor van de integratie, dus de drempel staat op één plek.
+- **Stookklaar**: de kaart volgt de binary sensor van de integratie, dus de drempel staat op één plek. Die grens stel je in bij de opties van de integratie (vanaf 1.9.0, standaard 20%); de kaart toont ze als *Stookklaar onder* bij het gekozen hok.
 - **Verversen**: de kaart tekent alleen opnieuw als een entiteit van de kaart zelf verandert, niet bij elke wijziging elders in Home Assistant. Tijdens het typen blijft je invoer behouden.
