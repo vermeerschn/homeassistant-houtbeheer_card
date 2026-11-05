@@ -12,16 +12,32 @@ hokken:
     opslaan: button.houthok_1_meting_opslaan
     vocht: sensor.houthok_1_opgeslagen_vochtgehalte
     datum: sensor.houthok_1_laatste_meting
+    vuldatum: date.houthok_1_vuldatum              (optioneel)
+    actief: switch.houthok_1_actief_hok            (optioneel)
+    reset: button.houthok_1_reset_hok              (optioneel)
+    stookklaar: binary_sensor.houthok_1_stookklaar (optioneel; anders rekent de kaart zelf met 20%)
 */
 class HoutbeheerCard extends HTMLElement {
   constructor() {
     super(); this.attachShadow({mode:'open'}); this.selected = null;
     this.drafts = {}; this.busy = false; this.message = ''; this.error = false;
+    this._dirty = false; this._watched = []; this._shedCache = null;
   }
   setConfig(config) {
     this.config = {title:'Houtbeheer', ...config}; this.render();
   }
-  set hass(hass) { this._hass = hass; this.render(); }
+  set hass(hass) {
+    const previous = this._hass;
+    this._hass = hass;
+    if (!this.config) return;
+    // HA stuurt bij elke state-change in huis een nieuwe hass; teken alleen opnieuw als er iets relevants veranderd is.
+    if (this._dirty || !previous || this.changed(previous, hass)) this.render();
+  }
+  changed(previous, hass) {
+    if (previous.entities !== hass.entities || previous.devices !== hass.devices) return true;
+    if (!this._watched.length) return true;
+    return this._watched.some(id => previous.states[id] !== hass.states[id]);
+  }
   getCardSize() { return 7; }
   normalize(s) { return String(s || '').toLowerCase().replace(/[_\s]+/g,' ').trim(); }
   find(number, domain, suffix) {
@@ -33,6 +49,16 @@ class HoutbeheerCard extends HTMLElement {
   }
   sheds() {
     if (!this._hass) return [];
+    // Het ontdekken loopt over alle states in HA: bewaar het resultaat zolang register, apparaten, config en aantal states gelijk blijven.
+    const count = Object.keys(this._hass.states).length;
+    const cache = this._shedCache;
+    if (cache && cache.entities === this._hass.entities && cache.devices === this._hass.devices
+        && cache.config === this.config && cache.count === count) return cache.value;
+    const value = this.discover();
+    this._shedCache = {entities:this._hass.entities, devices:this._hass.devices, config:this.config, count, value};
+    return value;
+  }
+  discover() {
     if (this.config.hokken) return this.config.hokken;
     const groups = new Map();
     for (const [id, state] of Object.entries(this._hass.states)) {
@@ -67,6 +93,12 @@ class HoutbeheerCard extends HTMLElement {
   escape(value) { return String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   state(id) { return this._hass?.states[id]; }
   valid(value) { return value !== undefined && value !== null && !['unknown','unavailable',''].includes(value); }
+  isReady(shed, moisture, valid) {
+    // Voorkeur: de stookklaar-binary sensor van de integratie, zodat de drempel op één plek staat.
+    const sensor = this.state(shed.stookklaar)?.state;
+    if (sensor === 'on' || sensor === 'off') return sensor === 'on';
+    return valid && Number(moisture) < 20; // terugval bij een handmatige koppeling zonder stookklaar-entiteit
+  }
   date(id) {
     const value=this.state(id)?.state;
     if(!this.valid(value)) return 'Nog niet gemeten';
@@ -76,8 +108,11 @@ class HoutbeheerCard extends HTMLElement {
   render() {
     if (!this.config || !this._hass) return;
     // Niet hertekenen tijdens typen of opslaan: behoud focus en lokale invoer.
-    if (this.busy || ['INPUT', 'SELECT'].includes(this.shadowRoot.activeElement?.tagName)) return;
+    // Onthoud dat er nog iets te tekenen valt; de eerstvolgende hass-update haalt dat in.
+    if (this.busy || ['INPUT', 'SELECT'].includes(this.shadowRoot.activeElement?.tagName)) { this._dirty = true; return; }
+    this._dirty = false;
     const sheds=this.sheds();
+    this._watched = sheds.flatMap(s => ['houtsoort','invoer','opslaan','vocht','datum','vuldatum','actief','reset','stookklaar'].map(key => s[key]).filter(Boolean));
     if (!sheds.some(s=>s.nummer===this.selected)) this.selected=sheds[0]?.nummer;
     const shed=sheds.find(s=>s.nummer===this.selected);
     const e=v=>this.escape(v);
@@ -100,7 +135,7 @@ class HoutbeheerCard extends HTMLElement {
       ${!shed ? '<p>Geen houthokken gevonden. Controleer de integratie of geef de entiteiten op in de kaartconfiguratie.</p>' : `
       <div class="grid">${sheds.map(s=>{
         const moisture=this.state(s.vocht)?.state;const valid=this.valid(moisture);
-        const ready=valid&&Number(moisture)<20;
+        const ready=this.isReady(s,moisture,valid);
         const woodType=this.state(s.houtsoort)?.state;
         const allowed=this.state(s.actief)?.state==='on';
         return `<button class="hok ${s.nummer===this.selected?'active':''} ${ready?'ready':''} ${allowed?'take-wood':''}" data-hok="${e(s.nummer)}"><strong>${e(s.naam || `Hok ${s.nummer}`)}</strong><span class="wood-type">${this.valid(woodType)?e(woodType):'Geen houtsoort'}</span><small>${valid?e(moisture)+'%':'Geen meting'}</small><span class="status ${ready?'status-ready':valid?'status-wet':'status-unknown'}">${ready?'🔥 Stookklaar':valid?'💧 Nog drogen':'— Niet gemeten'}</span>${allowed?'<span class="take-badge">🪵 Neem hier hout</span>':''}</button>`;
@@ -125,6 +160,7 @@ class HoutbeheerCard extends HTMLElement {
     if(input){input.oninput=()=>{this.drafts[shed.nummer]=input.value;};input.onkeydown=event=>{if(event.key==='Enter'){input.blur();this.save(shed);}};}
     const select=this.shadowRoot.querySelector('#wood');
     if(select) select.onchange=async()=>{
+      select.blur(); // anders houdt de keuzelijst focus en blijft de tegel achter tot je ergens anders klikt
       try{await this._hass.callService('select','select_option',{entity_id:shed.houtsoort,option:select.value});}
       catch(error){this.message=error.message||'Houtsoort wijzigen mislukt.';this.error=true;this.render();}
     };
