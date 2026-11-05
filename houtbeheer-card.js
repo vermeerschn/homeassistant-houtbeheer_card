@@ -19,6 +19,7 @@ hokken:
     actief: switch.houthok_1_actief_hok            (optioneel)
     reset: button.houthok_1_reset_hok              (optioneel)
     stookklaar: binary_sensor.houthok_1_stookklaar (optioneel; anders rekent de kaart zelf met 20%)
+De stookklaar-grens is instelbaar in de opties van de integratie (1.9.0); de kaart leest ze uit het attribuut grens.
 */
 class HoutbeheerCard extends HTMLElement {
   constructor() {
@@ -97,11 +98,16 @@ class HoutbeheerCard extends HTMLElement {
   escape(value) { return String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   state(id) { return this._hass?.states[id]; }
   valid(value) { return value !== undefined && value !== null && !['unknown','unavailable',''].includes(value); }
+  threshold(shed) {
+    // De grens is instelbaar in de opties van de integratie (1.9.0) en staat als attribuut op de stookklaar-sensor.
+    const value = Number(this.state(shed.stookklaar)?.attributes?.grens);
+    return Number.isFinite(value) ? value : 20;
+  }
   isReady(shed, moisture, valid) {
     // Voorkeur: de stookklaar-binary sensor van de integratie, zodat de drempel op één plek staat.
     const sensor = this.state(shed.stookklaar)?.state;
     if (sensor === 'on' || sensor === 'off') return sensor === 'on';
-    return valid && Number(moisture) < 20; // terugval bij een handmatige koppeling zonder stookklaar-entiteit
+    return valid && Number(moisture) < this.threshold(shed); // terugval bij een handmatige koppeling zonder stookklaar-entiteit
   }
   woodTypes(shed) {
     // De lijst staat in het attribuut houtsoorten van de sensor. Zolang een keuze onderweg is gebruiken we die,
@@ -224,13 +230,13 @@ class HoutbeheerCard extends HTMLElement {
         const allowed=this.state(s.actief)?.state==='on';
         const lastDate=has('laatste_meting')?this.shortDate(this.state(s.datum)?.state):'';
         const filled=has('vuldatum')?this.filledLabel(this.state(s.vuldatum)?.state):'';
-        return `<button class="hok ${s.nummer===this.selected?'active':''} ${ready?'ready':''} ${allowed&&has('actief')?'take-wood':''}" data-hok="${e(s.nummer)}"><strong>${e(s.naam || `Hok ${s.nummer}`)}</strong>${has('houtsoorten')?`<span class="wood-type" title="${e(woodTypes.join(', '))}">${e(this.woodLabel(woodTypes))}</span>`:''}${has('vocht')?`<small>${valid?e(moisture)+'%':'Geen meting'}</small>`:''}${lastDate?`<span class="tile-date">Gemeten ${e(lastDate)}</span>`:''}${filled?`<span class="tile-date">${e(filled)}</span>`:''}${has('status')?`<span class="status ${ready?'status-ready':valid?'status-wet':'status-unknown'}">${ready?'🔥 Stookklaar':valid?'💧 Nog drogen':'— Niet gemeten'}</span>`:''}${allowed&&has('actief')?'<span class="take-badge">🪵 Neem hier hout</span>':''}</button>`;
+        return `<button class="hok ${s.nummer===this.selected?'active':''} ${ready?'ready':''} ${allowed&&has('actief')?'take-wood':''}" data-hok="${e(s.nummer)}"><strong>${e(s.naam || `Hok ${s.nummer}`)}</strong>${has('houtsoorten')?`<span class="wood-type" title="${e(woodTypes.join(', '))}">${e(this.woodLabel(woodTypes))}</span>`:''}${has('vocht')?`<small>${valid?e(this.num(moisture))+'%':'Geen meting'}</small>`:''}${lastDate?`<span class="tile-date">Gemeten ${e(lastDate)}</span>`:''}${filled?`<span class="tile-date">${e(filled)}</span>`:''}${has('status')?`<span class="status ${ready?'status-ready':valid?'status-wet':'status-unknown'}">${ready?'🔥 Stookklaar':valid?'💧 Nog drogen':'— Niet gemeten'}</span>`:''}${allowed&&has('actief')?'<span class="take-badge">🪵 Neem hier hout</span>':''}</button>`;
       }).join('')}</div>
       <div class="fields"><div><label for="wood-toggle">Houtsoorten · Hok ${e(shed.nummer)}</label><button type="button" id="wood-toggle" class="select-like" aria-expanded="${woodPanel?'true':'false'}" aria-controls="wood-panel" title="${woodOptions.length?e(woodChosen.join(', ')):'Geen houtsoorten gevonden: werk de integratie bij naar 1.5.0'}" ${woodOptions.length?'':'disabled'}><span>${e(this.woodLabel(woodChosen))}</span><span aria-hidden="true">${woodPanel?'▴':'▾'}</span></button></div>
       <div><label for="moisture">Nieuwe vochtmeting (%)</label><input id="moisture" type="text" inputmode="decimal" placeholder="Bijvoorbeeld 18,5" value="${e(draft)}" ${this.state(shed.invoer)?'':'disabled'}></div></div>
       ${woodPanel}
       <div class="fields"><div><label for="filled-date">Hok gevuld op</label><input id="filled-date" type="date" value="${e(this.valid(this.state(shed.vuldatum)?.state)?this.state(shed.vuldatum).state:'')}" ${this.state(shed.vuldatum)&&this.state(shed.vuldatum).state!=='unavailable'?'':'disabled'}></div></div>
-      <div class="info">Gevuld op: ${e(this.valid(this.state(shed.vuldatum)?.state)?this.state(shed.vuldatum).state.split('-').reverse().join('/'):'Nog niet ingesteld')}<br>Opgeslagen: <strong>${this.valid(this.state(shed.vocht)?.state)?e(this.state(shed.vocht).state)+'%':'Nog geen meting'}</strong><br>Laatste meting: ${e(this.date(shed.datum))}</div>
+      <div class="info">Gevuld op: ${e(this.valid(this.state(shed.vuldatum)?.state)?this.state(shed.vuldatum).state.split('-').reverse().join('/'):'Nog niet ingesteld')}<br>Opgeslagen: <strong>${this.valid(this.state(shed.vocht)?.state)?e(this.num(this.state(shed.vocht).state))+'%':'Nog geen meting'}</strong><br>Laatste meting: ${e(this.date(shed.datum))}<br>Stookklaar onder: ${e(this.num(this.threshold(shed)))}%</div>
       ${this.config.verloop===false?'':this.historyHtml(shed)}
       <button class="save" id="save" ${this.state(shed.opslaan)&&this.state(shed.invoer)?'':'disabled'}>Meting opslaan · Hok ${e(shed.nummer)}</button>
       <div class="message ${this.error?'error':''}" role="status">${e(this.message)}</div>`}</ha-card>`;
@@ -279,7 +285,7 @@ class HoutbeheerCard extends HTMLElement {
       reset.onclick=async()=>{
         if(this.busy)return;
         const name=shed.naam || `Hok ${shed.nummer}`;
-        if(!window.confirm(`${name} resetten? De houtsoort, nieuwe invoer, opgeslagen meting, meetdatum en vuldatum worden gewist. Het hok wordt niet-actief. Dit kan niet ongedaan worden gemaakt.`))return;
+        if(!window.confirm(`${name} resetten? De houtsoorten, nieuwe invoer, opgeslagen meting, meetgeschiedenis, meetdatum en vuldatum worden gewist. Het hok wordt niet-actief. Dit kan niet ongedaan worden gemaakt.`))return;
         this.shadowRoot.querySelector('input')?.blur();
         this.busy=true;
         this.shadowRoot.querySelectorAll('button,input,select').forEach(el=>el.disabled=true);
@@ -325,7 +331,7 @@ class HoutbeheerCard extends HTMLElement {
       await this._hass.callService('number','set_value',{entity_id:shed.invoer,value});
       await this._hass.callService('button','press',{entity_id:shed.opslaan});
       delete this.drafts[shed.nummer];this.error=false;
-      this.message=`Meting voor Hok ${shed.nummer} opgeslagen (${value}%).`;
+      this.message=`Meting voor Hok ${shed.nummer} opgeslagen (${this.num(value)}%).`;
     } catch(error) {this.error=true;this.message=error.message||'Opslaan mislukt. Je invoer is behouden.';}
     finally {this.busy=false;this.render();}
   }
@@ -334,18 +340,23 @@ class HoutbeheerCard extends HTMLElement {
 }
 class HoutbeheerCardEditor extends HTMLElement {
   constructor() { super(); this.attachShadow({mode:'open'}); }
-  setConfig(config) { this.config={...config}; this.render(); }
+  // HA roept setConfig opnieuw aan na elk config-changed. Het formulier opnieuw opbouwen zou de focus
+  // (en de cursor in het titelveld) bij elke toetsaanslag wegnemen; daarom bouwen we het één keer op.
+  setConfig(config) { this.config={...config}; if(!this._built) this.build(); this.sync(); }
   set hass(hass) { this._hass=hass; }
   commit(config) {
     this.config=config;
     this.dispatchEvent(new CustomEvent('config-changed',{detail:{config},bubbles:true,composed:true}));
   }
   update(key,value) { this.commit({...this.config,[key]:value}); }
-  render() {
-    if(!this.config)return;
+  items() {
+    if(Array.isArray(this.config.tegelinhoud)) return this.config.tegelinhoud;
+    return this.config.weergave==='compact'?['vocht','actief']:['houtsoorten','vocht','status','actief'];
+  }
+  $(selector) { return this.shadowRoot.querySelector(selector); }
+  build() {
+    this._built=true;
     const contents=[['houtsoorten','Houtsoorten'],['vocht','Vochtpercentage'],['status','Status (stookklaar / nog drogen)'],['laatste_meting','Datum laatste meting'],['vuldatum','Vuldatum en dagen sinds vullen'],['actief','Badge "Neem hier hout"']];
-    const compact=this.config.weergave==='compact';
-    const items=Array.isArray(this.config.tegelinhoud)?this.config.tegelinhoud:(compact?['vocht','actief']:['houtsoorten','vocht','status','actief']);
     this.shadowRoot.innerHTML=`<style>
       :host{display:block;color:var(--primary-text-color)}label{display:block;margin:16px 0 8px;font:inherit}
       input[type=text],select{box-sizing:border-box;width:100%;padding:12px;font:inherit;border:1px solid var(--divider-color);border-radius:8px;background:var(--secondary-background-color);color:inherit}
@@ -354,23 +365,28 @@ class HoutbeheerCardEditor extends HTMLElement {
     <h4>Tegels</h4><label for="view">Weergave</label><select id="view"><option value="uitgebreid">Uitgebreid</option><option value="compact">Compact (nummer en percentage)</option></select>
     <label for="cols">Tegels per rij</label><select id="cols"><option value="auto">Automatisch</option>${[1,2,3,4,5,6,7,8].map(n=>`<option value="${n}">${n}</option>`).join('')}</select>
     <label class="toggle"><input id="verloop" type="checkbox">Toon verloop van de laatste metingen</label><label>Inhoud van de tegel</label>${contents.map(([key,text])=>`<label class="toggle"><input type="checkbox" data-item="${key}">${text}</label>`).join('')}`;
-    const title=this.shadowRoot.querySelector('#title');title.value=this.config.title??'Houtbeheer';
+    const title=this.$('#title'), readonly=this.$('#readonly'), verloop=this.$('#verloop'), view=this.$('#view'), cols=this.$('#cols');
     title.addEventListener('input',()=>this.update('title',title.value));
-    const readonly=this.shadowRoot.querySelector('#readonly');readonly.checked=Boolean(this.config.read_only);
     readonly.addEventListener('change',()=>this.update('read_only',readonly.checked));
-    const verloop=this.shadowRoot.querySelector('#verloop');verloop.checked=this.config.verloop!==false;
     verloop.addEventListener('change',()=>{const c={...this.config};if(verloop.checked)delete c.verloop;else c.verloop=false;this.commit(c);});
-    const view=this.shadowRoot.querySelector('#view');view.value=compact?'compact':'uitgebreid';
-    view.addEventListener('change',()=>{const c={...this.config};if(view.value==='compact')c.weergave='compact';else delete c.weergave;this.commit(c);this.render();});
-    const cols=this.shadowRoot.querySelector('#cols');cols.value=String(this.config.kolommen??'auto');
+    // Zonder eigen tegelinhoud hangen de standaardvinkjes af van de weergave: sync zet ze meteen juist.
+    view.addEventListener('change',()=>{const c={...this.config};if(view.value==='compact')c.weergave='compact';else delete c.weergave;this.commit(c);this.sync();});
     cols.addEventListener('change',()=>{const c={...this.config};if(cols.value==='auto')delete c.kolommen;else c.kolommen=Number(cols.value);this.commit(c);});
-    this.shadowRoot.querySelectorAll('[data-item]').forEach(box=>{
-      box.checked=items.includes(box.dataset.item);
-      box.addEventListener('change',()=>{
-        const chosen=[...this.shadowRoot.querySelectorAll('[data-item]')].filter(x=>x.checked).map(x=>x.dataset.item);
-        this.update('tegelinhoud',chosen);
-      });
-    });
+    this.shadowRoot.querySelectorAll('[data-item]').forEach(box=>box.addEventListener('change',()=>{
+      const chosen=[...this.shadowRoot.querySelectorAll('[data-item]')].filter(x=>x.checked).map(x=>x.dataset.item);
+      this.update('tegelinhoud',chosen);
+    }));
+  }
+  sync() {
+    // Alleen waarden zetten; een veld dat de gebruiker op dit moment bewerkt, laten we met rust.
+    const title=this.$('#title'), wanted=this.config.title??'Houtbeheer';
+    if(this.shadowRoot.activeElement!==title && title.value!==wanted) title.value=wanted;
+    this.$('#readonly').checked=Boolean(this.config.read_only);
+    this.$('#verloop').checked=this.config.verloop!==false;
+    this.$('#view').value=this.config.weergave==='compact'?'compact':'uitgebreid';
+    this.$('#cols').value=String(this.config.kolommen??'auto');
+    const items=this.items();
+    this.shadowRoot.querySelectorAll('[data-item]').forEach(box=>{box.checked=items.includes(box.dataset.item);});
   }
 }
 if(!customElements.get('houtbeheer-card-editor'))customElements.define('houtbeheer-card-editor',HoutbeheerCardEditor);
