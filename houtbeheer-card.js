@@ -7,7 +7,7 @@ Optioneel: aantal_hokken: 12
 Optioneel expliciete koppeling (als entiteiten hernoemd zijn):
 hokken:
   - nummer: 1
-    houtsoort: select.houthok_1_houtsoort
+    houtsoort: sensor.houthok_1_houtsoorten
     invoer: number.houthok_1_nieuwe_vochtmeting
     opslaan: button.houthok_1_meting_opslaan
     vocht: sensor.houthok_1_opgeslagen_vochtgehalte
@@ -22,6 +22,7 @@ class HoutbeheerCard extends HTMLElement {
     super(); this.attachShadow({mode:'open'}); this.selected = null;
     this.drafts = {}; this.busy = false; this.message = ''; this.error = false;
     this._dirty = false; this._watched = []; this._shedCache = null;
+    this.pendingWood = {}; this.woodOpen = false;
   }
   setConfig(config) {
     this.config = {title:'Houtbeheer', ...config}; this.render();
@@ -99,6 +100,28 @@ class HoutbeheerCard extends HTMLElement {
     if (sensor === 'on' || sensor === 'off') return sensor === 'on';
     return valid && Number(moisture) < 20; // terugval bij een handmatige koppeling zonder stookklaar-entiteit
   }
+  woodTypes(shed) {
+    // De lijst staat in het attribuut houtsoorten van de sensor. Zolang een keuze onderweg is gebruiken we die,
+    // zodat snel na elkaar aanvinken niets overschrijft; zodra HA dezelfde lijst meldt, vervalt ze.
+    const state = this.state(shed.houtsoort);
+    const attr = state?.attributes?.houtsoorten;
+    const actual = Array.isArray(attr) ? attr
+      : (this.valid(state?.state) && state.state !== 'Geen houtsoort' ? [state.state] : []);
+    const pending = this.pendingWood[shed.nummer];
+    if (pending) {
+      if (pending.length === actual.length && pending.every(wood => actual.includes(wood))) delete this.pendingWood[shed.nummer];
+      else return pending;
+    }
+    return actual;
+  }
+  woodOptions(shed) {
+    const attrs = this.state(shed.houtsoort)?.attributes || {};
+    return attrs.opties ?? attrs.options ?? [];
+  }
+  woodLabel(types) {
+    if (!types.length) return 'Geen houtsoort';
+    return types.length <= 2 ? types.join(', ') : `${types.slice(0, 2).join(', ')} +${types.length - 2}`;
+  }
   date(id) {
     const value=this.state(id)?.state;
     if(!this.valid(value)) return 'Nog niet gemeten';
@@ -107,16 +130,22 @@ class HoutbeheerCard extends HTMLElement {
   }
   render() {
     if (!this.config || !this._hass) return;
-    // Niet hertekenen tijdens typen of opslaan: behoud focus en lokale invoer.
+    // Niet hertekenen tijdens typen of opslaan: behoud focus en lokale invoer. Vinkjes tellen niet mee;
+    // hun focus zetten we na het hertekenen terug (zie onderaan).
     // Onthoud dat er nog iets te tekenen valt; de eerstvolgende hass-update haalt dat in.
-    if (this.busy || ['INPUT', 'SELECT'].includes(this.shadowRoot.activeElement?.tagName)) { this._dirty = true; return; }
+    const active = this.shadowRoot.activeElement;
+    const typing = active && ['INPUT', 'SELECT'].includes(active.tagName) && active.type !== 'checkbox';
+    if (this.busy || typing) { this._dirty = true; return; }
+    const focusedWood = active?.matches?.('#wood-panel input') ? active.value : null;
     this._dirty = false;
     const sheds=this.sheds();
     this._watched = sheds.flatMap(s => ['houtsoort','invoer','opslaan','vocht','datum','vuldatum','actief','reset','stookklaar'].map(key => s[key]).filter(Boolean));
     if (!sheds.some(s=>s.nummer===this.selected)) this.selected=sheds[0]?.nummer;
     const shed=sheds.find(s=>s.nummer===this.selected);
     const e=v=>this.escape(v);
-    const wood=this.state(shed?.houtsoort);
+    const woodOptions=shed?this.woodOptions(shed):[];
+    const woodChosen=shed?this.woodTypes(shed):[];
+    const woodPanel=this.woodOpen&&woodOptions.length?`<div class="fields wood-fields"><div id="wood-panel" class="wood-panel" role="group" aria-label="Houtsoorten">${woodOptions.map(option=>`<label class="opt"><input type="checkbox" value="${e(option)}" ${woodChosen.includes(option)?'checked':''}>${e(option)}</label>`).join('')}</div></div>`:'';
     const draft=shed ? this.drafts[shed.nummer] ?? '' : '';
     this.shadowRoot.innerHTML=`
       <style>
@@ -129,6 +158,8 @@ class HoutbeheerCard extends HTMLElement {
         .fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}.info{margin:16px 0;font-size:14px;line-height:1.7;color:var(--secondary-text-color)}.save{width:100%;background:var(--primary-color);color:var(--text-primary-color,#fff);border:0;font-weight:600;padding:14px}
         button:disabled,select:disabled,input:disabled{opacity:.5;cursor:default}.message{margin-top:12px;font-size:14px;color:var(--success-color,#368647)}.error{color:var(--error-color,#db4437)}
         .hok.take-wood{outline:3px solid #d99000;outline-offset:1px}.take-badge{background:#ffcf64;color:#342300;font-size:12px;font-weight:800;padding:7px 3px;border-radius:7px;width:100%;box-sizing:border-box}.permission{width:100%;margin:12px 0;font-weight:600}.permission.enabled{background:#ffcf64;color:#342300}.permission-note{font-size:13px;color:var(--secondary-text-color);margin-bottom:12px}
+        .select-like{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;padding:12px;min-height:46px;background:var(--secondary-background-color)}.select-like span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .wood-fields{grid-template-columns:1fr;margin-top:14px}.wood-panel{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:2px 10px;border:1px solid var(--divider-color);border-radius:10px;padding:6px 8px;background:var(--secondary-background-color)}.wood-panel .opt{display:flex;align-items:center;gap:10px;margin:0;padding:9px 4px;cursor:pointer}.wood-panel input[type=checkbox]{width:20px;height:20px;min-height:0;padding:0;margin:0;flex:none;accent-color:var(--primary-color)}
         @media(max-width:380px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.fields{grid-template-columns:1fr}}
       </style>
       <ha-card><h2>${e(this.config.title)}</h2><p>Kies een hok en bevestig je nieuwe meting.</p>
@@ -136,12 +167,13 @@ class HoutbeheerCard extends HTMLElement {
       <div class="grid">${sheds.map(s=>{
         const moisture=this.state(s.vocht)?.state;const valid=this.valid(moisture);
         const ready=this.isReady(s,moisture,valid);
-        const woodType=this.state(s.houtsoort)?.state;
+        const woodTypes=this.woodTypes(s);
         const allowed=this.state(s.actief)?.state==='on';
-        return `<button class="hok ${s.nummer===this.selected?'active':''} ${ready?'ready':''} ${allowed?'take-wood':''}" data-hok="${e(s.nummer)}"><strong>${e(s.naam || `Hok ${s.nummer}`)}</strong><span class="wood-type">${this.valid(woodType)?e(woodType):'Geen houtsoort'}</span><small>${valid?e(moisture)+'%':'Geen meting'}</small><span class="status ${ready?'status-ready':valid?'status-wet':'status-unknown'}">${ready?'🔥 Stookklaar':valid?'💧 Nog drogen':'— Niet gemeten'}</span>${allowed?'<span class="take-badge">🪵 Neem hier hout</span>':''}</button>`;
+        return `<button class="hok ${s.nummer===this.selected?'active':''} ${ready?'ready':''} ${allowed?'take-wood':''}" data-hok="${e(s.nummer)}"><strong>${e(s.naam || `Hok ${s.nummer}`)}</strong><span class="wood-type" title="${e(woodTypes.join(', '))}">${e(this.woodLabel(woodTypes))}</span><small>${valid?e(moisture)+'%':'Geen meting'}</small><span class="status ${ready?'status-ready':valid?'status-wet':'status-unknown'}">${ready?'🔥 Stookklaar':valid?'💧 Nog drogen':'— Niet gemeten'}</span>${allowed?'<span class="take-badge">🪵 Neem hier hout</span>':''}</button>`;
       }).join('')}</div>
-      <div class="fields"><div><label for="wood">Houtsoort · Hok ${e(shed.nummer)}</label><select id="wood" ${wood?'':'disabled'}>${(wood?.attributes.options||[]).map(option=>`<option ${option===wood.state?'selected':''} value="${e(option)}">${e(option)}</option>`).join('')}</select></div>
+      <div class="fields"><div><label for="wood-toggle">Houtsoorten · Hok ${e(shed.nummer)}</label><button type="button" id="wood-toggle" class="select-like" aria-expanded="${woodPanel?'true':'false'}" aria-controls="wood-panel" title="${e(woodChosen.join(', '))}" ${woodOptions.length?'':'disabled'}><span>${e(this.woodLabel(woodChosen))}</span><span aria-hidden="true">${woodPanel?'▴':'▾'}</span></button></div>
       <div><label for="moisture">Nieuwe vochtmeting (%)</label><input id="moisture" type="text" inputmode="decimal" placeholder="Bijvoorbeeld 18,5" value="${e(draft)}" ${this.state(shed.invoer)?'':'disabled'}></div></div>
+      ${woodPanel}
       <div class="fields"><div><label for="filled-date">Hok gevuld op</label><input id="filled-date" type="date" value="${e(this.valid(this.state(shed.vuldatum)?.state)?this.state(shed.vuldatum).state:'')}" ${this.state(shed.vuldatum)&&this.state(shed.vuldatum).state!=='unavailable'?'':'disabled'}></div></div>
       <div class="info">Gevuld op: ${e(this.valid(this.state(shed.vuldatum)?.state)?this.state(shed.vuldatum).state.split('-').reverse().join('/'):'Nog niet ingesteld')}<br>Opgeslagen: <strong>${this.valid(this.state(shed.vocht)?.state)?e(this.state(shed.vocht).state)+'%':'Nog geen meting'}</strong><br>Laatste meting: ${e(this.date(shed.datum))}</div>
       <button class="save" id="save" ${this.state(shed.opslaan)&&this.state(shed.invoer)?'':'disabled'}>Meting opslaan · Hok ${e(shed.nummer)}</button>
@@ -158,12 +190,15 @@ class HoutbeheerCard extends HTMLElement {
     });
     const input=this.shadowRoot.querySelector('#moisture');
     if(input){input.oninput=()=>{this.drafts[shed.nummer]=input.value;};input.onkeydown=event=>{if(event.key==='Enter'){input.blur();this.save(shed);}};}
-    const select=this.shadowRoot.querySelector('#wood');
-    if(select) select.onchange=async()=>{
-      select.blur(); // anders houdt de keuzelijst focus en blijft de tegel achter tot je ergens anders klikt
-      try{await this._hass.callService('select','select_option',{entity_id:shed.houtsoort,option:select.value});}
-      catch(error){this.message=error.message||'Houtsoort wijzigen mislukt.';this.error=true;this.render();}
-    };
+    const woodToggle=this.shadowRoot.querySelector('#wood-toggle');
+    if(woodToggle) woodToggle.onclick=()=>{this.woodOpen=!this.woodOpen;this.render();};
+    this.shadowRoot.querySelectorAll('#wood-panel input').forEach(box=>box.onchange=async()=>{
+      // Lees de hele selectie uit de vinkjes, zodat snel na elkaar aanvinken niets overschrijft.
+      const selection=[...this.shadowRoot.querySelectorAll('#wood-panel input:checked')].map(item=>item.value);
+      this.pendingWood[shed.nummer]=selection;
+      try{await this._hass.callService('houtbeheer','set_wood_types',{shed:shed.nummer,wood_types:selection});}
+      catch(error){delete this.pendingWood[shed.nummer];this.message=error.message||'Houtsoorten wijzigen mislukt.';this.error=true;this.render();}
+    });
     if(shed && shed.actief && !this.config.read_only) {
       const enabled=this.state(shed.actief)?.state==='on';
       const toggle=document.createElement('button');
@@ -192,13 +227,12 @@ class HoutbeheerCard extends HTMLElement {
         const name=shed.naam || `Hok ${shed.nummer}`;
         if(!window.confirm(`${name} resetten? De houtsoort, nieuwe invoer, opgeslagen meting, meetdatum en vuldatum worden gewist. Het hok wordt niet-actief. Dit kan niet ongedaan worden gemaakt.`))return;
         this.shadowRoot.querySelector('input')?.blur();
-        this.shadowRoot.querySelector('select')?.blur();
         this.busy=true;
         this.shadowRoot.querySelectorAll('button,input,select').forEach(el=>el.disabled=true);
         reset.textContent='Hok resetten…';
         try {
           await this._hass.callService('button','press',{entity_id:shed.reset});
-          delete this.drafts[shed.nummer];
+          delete this.drafts[shed.nummer];delete this.pendingWood[shed.nummer];
           this.error=false;this.message=`${name} is gereset.`;
         } catch(error) {
           this.error=true;this.message=error.message||'Resetten mislukt.';
@@ -219,6 +253,7 @@ class HoutbeheerCard extends HTMLElement {
       } finally {this.busy=false;this.render();}
     };
     const save=this.shadowRoot.querySelector('#save');if(save) save.onclick=()=>this.save(shed);
+    if(focusedWood) [...this.shadowRoot.querySelectorAll('#wood-panel input')].find(box=>box.value===focusedWood)?.focus();
   }
   async save(shed) {
     if(this.busy) return;

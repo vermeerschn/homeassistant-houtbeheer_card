@@ -2,7 +2,7 @@
 
 Lovelace-dashboardkaart voor de [Houtbeheer-integratie](https://github.com/vermeerschn/homeassistant-houtbeheer_integration): een overzicht van je houthokken met houtsoort, vochtpercentage, stookklaar-status en vuldatum, met handmatige metingen.
 
-De kaart heeft de integratie nodig; die levert de entiteiten.
+De kaart heeft de integratie nodig; die levert de entiteiten. Meerdere houtsoorten per hok vereisen een integratieversie met `houtbeheer.set_wood_types` (na 1.4.1); werk beide samen bij.
 
 ## Installatie
 
@@ -41,7 +41,7 @@ Alleen nodig als je de entiteiten niet via de integratie laat vinden:
 type: custom:houtbeheer-card
 hokken:
   - nummer: 1
-    houtsoort: select.houthok_1_houtsoort
+    houtsoort: sensor.houthok_1_houtsoorten
     invoer: number.houthok_1_nieuwe_vochtmeting
     opslaan: button.houthok_1_meting_opslaan
     vocht: sensor.houthok_1_opgeslagen_vochtgehalte
@@ -57,6 +57,7 @@ Zonder `actief` en `reset` ontbreken de knoppen *Dit hok actief maken* en *Reset
 
 ## Gedrag
 
+- **Houtsoorten**: de knop *Houtsoorten* klapt een lijst met vinkjes open. Elk vinkje wordt meteen opgeslagen via de actie `houtbeheer.set_wood_types`. De tegel toont de gekozen soorten (bij meer dan twee: de eerste twee en `+N`).
 - **Meting opslaan**: de kaart zet de ingevulde waarde in het invoerveld en drukt daarna op de knop *Meting opslaan*, zodat waarde en tijdstip samen worden vastgelegd. Een waarde buiten het bereik van het invoerveld wordt geweigerd.
 - **Stookklaar**: de kaart volgt de binary sensor van de integratie, dus de drempel staat op één plek.
 - **Verversen**: de kaart tekent alleen opnieuw als een entiteit van de kaart zelf verandert, niet bij elke wijziging elders in Home Assistant. Tijdens het typen blijft je invoer behouden.
