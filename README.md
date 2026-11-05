@@ -22,12 +22,18 @@ De kaart heeft de integratie nodig; die levert de entiteiten. Meerdere houtsoort
 type: custom:houtbeheer-card
 title: Houtbeheer
 read_only: false
+weergave: uitgebreid
+kolommen: auto
+tegelinhoud: [houtsoorten, vocht, status, actief]
 ```
 
 | Optie | Standaard | Uitleg |
 | --- | --- | --- |
 | `title` | `Houtbeheer` | Titel bovenaan de kaart. |
 | `read_only` | `false` | Toont alleen het overzicht en de opgeslagen gegevens; geen invoer, geen knoppen. |
+| `weergave` | `uitgebreid` | `compact` toont per tegel alleen naam en vochtpercentage (handig voor een muurtablet). |
+| `kolommen` | `auto` | Aantal tegels per rij (1 t/m 8). `auto` past zich aan de breedte aan. |
+| `tegelinhoud` | zie uitleg | Lijst met wat op de tegel staat: `houtsoorten`, `vocht`, `status`, `laatste_meting`, `vuldatum`, `actief`. Standaard `[houtsoorten, vocht, status, actief]`, bij `compact` `[vocht, actief]`. |
 | `hokken` | automatisch | Handmatige koppeling van entiteiten, zie hieronder. |
 | `aantal_hokken` | – | Terugval voor oudere installaties zonder de attributen van de integratie. |
 
